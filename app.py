@@ -132,27 +132,92 @@ def review_logout():
 @app.get("/review")
 @reviewer_required
 def review_queue():
-    conn = db(); cur = conn.cursor(dictionary=True)
-    cur.execute("SELECT id,title,description,incident_date,status,created_at FROM reports ORDER BY FIELD(status,'new','reviewed','closed'), created_at DESC")
-    reports = cur.fetchall(); cur.close(); conn.close()
-    return render_template("review_queue.html", reports=reports)
+    conn = db()
+    cur = conn.cursor(dictionary=True)
+
+    cur.execute("""
+        SELECT
+            r.id,
+            r.title,
+            r.description,
+            r.incident_date,
+            r.status,
+            r.created_at,
+            e.kind AS evidence_kind,
+            e.value_display AS evidence_value
+        FROM reports AS r
+        LEFT JOIN report_evidence AS re ON re.report_id = r.id
+        LEFT JOIN evidence AS e ON e.id = re.evidence_id
+        ORDER BY
+            FIELD(r.status, 'new', 'reviewed', 'closed'),
+            r.created_at DESC,
+            e.kind
+    """)
+
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    reports_by_id = {}
+
+    for row in rows:
+        report = reports_by_id.setdefault(row["id"], {
+            "id": row["id"],
+            "title": row["title"],
+            "description": row["description"],
+            "incident_date": row["incident_date"],
+            "status": row["status"],
+            "created_at": row["created_at"],
+            "evidence": [],
+        })
+
+        if row["evidence_kind"]:
+            report["evidence"].append({
+                "kind": row["evidence_kind"],
+                "value": row["evidence_value"],
+            })
+
+    return render_template(
+        "review_queue.html",
+        reports=list(reports_by_id.values()),
+        kinds=KINDS,
+    )
+
 
 @app.post("/review/<int:report_id>/status")
 @reviewer_required
 def update_review_status(report_id):
     status = request.form.get("status")
-    if status not in ("reviewed", "closed"):
-        flash("Choose a valid review outcome.", "error"); return redirect(url_for("review_queue"))
-    conn = db(); cur = conn.cursor()
-    cur.execute("UPDATE reports SET status=%s WHERE id=%s", (status, report_id))
-    if cur.rowcount:
-        cur.execute("INSERT INTO audit_log(report_id,action,details) VALUES (%s,%s,%s)", (report_id, "status_changed", f"Status set to {status} by {session.get('reviewer_name', 'reviewer')}"))
-        conn.commit(); flash(f"Report #{report_id} marked {status}.", "success")
-    else:
-        conn.rollback(); flash("Report not found.", "error")
-    cur.close(); conn.close()
-    return redirect(url_for("review_queue"))
 
+    if status not in ("reviewed", "closed"):
+        flash("Choose a valid review outcome.", "error")
+        return redirect(url_for("review_queue"))
+
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE reports SET status=%s WHERE id=%s",
+        (status, report_id),
+    )
+
+    if cur.rowcount:
+        cur.execute(
+            "INSERT INTO audit_log(report_id, action, details) VALUES (%s, %s, %s)",
+            (
+                report_id,
+                "status_changed",
+                f"Status set to {status} by reviewer",
+            ),
+        )
+        conn.commit()
+        flash(f"Report #{report_id} marked {status}.", "success")
+    else:
+        conn.rollback()
+        flash("Report not found.", "error")
+
+    cur.close()
+    conn.close()
+    return redirect(url_for("review_queue"))
 @app.errorhandler(413)
 def too_large(_): return "Submission too large.", 413
 

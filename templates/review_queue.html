@@ -1,1 +1,54 @@
-{% extends 'base.html' %}{% block title %}Review queue · Scam Mapper{% endblock %}{% block content %}<section><p class="eyebrow">PRIVATE REVIEW AREA</p><h1>Review queue</h1><p class="muted">Review each submission before treating it as accurate. A shared evidence item is a lead, not proof.</p>{% for r in reports %}<article class="review-card"><div class="section-head"><div><h2>{{ r.title }}</h2><small>Report #{{ r.id }} · Submitted {{ r.created_at.strftime('%b %d, %Y') }}{% if r.incident_date %} · Incident date {{ r.incident_date }}{% endif %}</small></div><span class="tag">{{ r.status|upper }}</span></div><p>{{ r.description }}</p><form method="post" action="{{ url_for('update_review_status', report_id=r.id) }}" class="review-actions"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="button small" name="status" value="reviewed">Mark reviewed</button><button class="button small close-button" name="status" value="closed">Close report</button></form></article>{% else %}<p class="empty">There are no submitted reports to review.</p>{% endfor %}</section>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}Review queue · Scam Mapper{% endblock %}
+
+{% block content %}
+<section>
+  <p class="eyebrow">PRIVATE REVIEW AREA</p>
+  <h1>Review queue</h1>
+  <p class="muted">Review submissions carefully. Evidence and connections are leads, not proof.</p>
+
+  {% for r in reports %}
+    <article class="review-card">
+      <div class="section-head">
+        <div>
+          <h2>{{ r.title }}</h2>
+          <small>
+            Report #{{ r.id }} · Submitted {{ r.created_at.strftime('%b %d, %Y') }}
+            {% if r.incident_date %}
+              · Incident date {{ r.incident_date.strftime('%b %d, %Y') }}
+            {% endif %}
+          </small>
+        </div>
+        <span class="tag">{{ r.status|upper }}</span>
+      </div>
+
+      <h3>Description</h3>
+      <p>{{ r.description }}</p>
+
+      <h3>Evidence</h3>
+      {% if r.evidence %}
+        <ul>
+          {% for item in r.evidence %}
+            <li>
+              <strong>{{ kinds.get(item.kind, item.kind) }}:</strong>
+              <code>{{ item.value }}</code>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="muted">No evidence was attached.</p>
+      {% endif %}
+
+      <form method="post"
+            action="{{ url_for('update_review_status', report_id=r.id) }}"
+            class="review-actions">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="button small" name="status" value="reviewed">Mark reviewed</button>
+        <button class="button small close-button" name="status" value="closed">Close report</button>
+      </form>
+    </article>
+  {% else %}
+    <p class="empty">There are no submitted reports to review.</p>
+  {% endfor %}
+</section>
+{% endblock %}
